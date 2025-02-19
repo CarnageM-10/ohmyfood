@@ -15,7 +15,7 @@
  if(isset($_GET['id'])){// si un id est envoyé alors:
     $id = $_GET['id'];
     //verifier grace a l'id si le produit existe dans la bd
-    $produit =  mysqli_query($con, "SELECT * FROM products WHERE id = $id");
+    $produit =  mysqli_query($con, "SELECT * FROM plats WHERE id = $id");
     if(empty(mysqli_fetch_assoc($produit))){
         //si ce produit n'existe pas
         die("Ce produit n'existe pas");
