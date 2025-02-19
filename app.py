@@ -1,5 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash
 from flask_sqlalchemy import SQLAlchemy
+from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
+from flask_bcrypt import Bcrypt
 from datetime import datetime
 
 app = Flask(__name__)
@@ -7,8 +9,22 @@ app.config['SECRET_KEY'] = 'votre_clé_secrète'  # À changer en production
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///restaurant.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
+bcrypt = Bcrypt(app)
+login_manager = LoginManager(app)
+login_manager.login_view = "login"
+
+@login_manager.user_loader
+def load_user(user_id):
+    return User.query.get(int(user_id))
 
 # Modèles de données
+class User(db.Model, UserMixin):
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(150), unique=True, nullable=False)
+    password = db.Column(db.String(150), nullable=False)
+    name = db.Column(db.String(150), nullable=False)  # Nouvelle colonne 'name'
+    numero = db.Column(db.String(15), nullable=False)  # Nouvelle colonne 'numero'
+
 class Restaurant(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nom = db.Column(db.String(100), nullable=False)
@@ -48,17 +64,60 @@ class CarteBancaire(db.Model):
     numCard = db.Column(db.String(16), nullable=False)
     montantCard = db.Column(db.Float, nullable=False)
 
-# Routes
-@app.route('/')
+# Route d'inscription (page d'accueil)
+@app.route('/', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        email = request.form['email']
+        password = request.form['password']
+        name = request.form['name']  # Récupérer le nom depuis le formulaire
+        numero = request.form['numero']  # Récupérer le numéro depuis le formulaire
+        hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
+        
+        user = User(email=email, password=hashed_password, name=name, numero=numero)  # Inclure le numéro
+        db.session.add(user)
+        db.session.commit()
+        flash('Inscription réussie! Vous pouvez maintenant vous connecter.', 'success')
+        return redirect(url_for('login'))
+    return render_template('register.html')
+    
+# Route de connexion
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        email = request.form['email']
+        password = request.form['password']
+        user = User.query.filter_by(email=email).first()
+        
+        if user and bcrypt.check_password_hash(user.password, password):
+            login_user(user)
+            flash('Connexion réussie!', 'success')
+            return redirect(url_for('index'))  # Rediriger vers les restaurants après la connexion
+        else:
+            flash('Identifiants invalides. Veuillez réessayer.', 'danger')
+    return render_template('login.html')
+
+# Route de déconnexion
+@app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for('login'))  # Rediriger vers la page de connexion après la déconnexion
+
+
+# Page des restaurants
+@app.route('/index')
 def index():
     restaurants = Restaurant.query.all()
     return render_template('index.html', restaurants=restaurants)
 
+# Route de détail du restaurant
 @app.route('/restaurant/<int:restaurant_id>')
 def restaurant_detail(restaurant_id):
     restaurant = Restaurant.query.get_or_404(restaurant_id)
     return render_template('restaurant.html', restaurant=restaurant)
 
+# Routes pour la gestion du panier
 @app.route('/ajouter_panier', methods=['POST'])
 def ajouter_panier():
     plat_id = request.form.get('plat_id')
@@ -87,6 +146,7 @@ def ajouter_panier():
     db.session.commit()
     return redirect(request.referrer)
 
+# Supprimer une commande
 @app.route('/supprimer_commande/<int:plat_id>', methods=['POST'])
 def supprimer_commande(plat_id):
     paniers = Panier.query.filter_by(plat_id=plat_id).order_by(Panier.date_ajout.desc()).all()
@@ -100,6 +160,7 @@ def supprimer_commande(plat_id):
 
     return redirect(url_for('voir_panier'))  
 
+# Passer commande
 @app.route('/passer_commande', methods=['GET', 'POST'])
 def passer_commande():
     if request.method == 'POST':
@@ -108,6 +169,7 @@ def passer_commande():
         cvv = request.form['cvv']
         dateExp = request.form['dateExp']
         numCard = request.form['numCard']
+        # Traitement de la commande (ajouter la logique ici)
 
         # Récupérer le total du panier depuis la session
         total_panier = session.get('total', 0)  # Assurez-vous que le total est stocké dans la session
@@ -190,6 +252,7 @@ def contact():
     
     return render_template('contact.html')
 
+
 @app.route('/carte', methods=['GET', 'POST'])
 def carte():
     if request.method == 'POST':
@@ -258,16 +321,16 @@ with app.app_context():
             db.session.commit()  # Commit après chaque restaurant pour éviter les problèmes de clé primaire
             
             for i in range(3):
-                                plat = Plat(
+                plat = Plat(
                     nom=f"Plat {i+1}",
                     description=f"Description du plat {i+1}",
                     prix=15.99 + i,
                     restaurant=restaurant,
                     image=f'images/plats/{restaurant_data["nom"].lower()}/plat_{i+1}.jpeg'
                 )
-        db.session.add(plat)
-        
-        db.session.commit()
+                db.session.add(plat)  # Ajoutez le plat à la session
+
+        db.session.commit()  # Commit après avoir ajouté tous les plats
 
 if __name__ == '__main__':
     app.run(debug=True, port=5001)

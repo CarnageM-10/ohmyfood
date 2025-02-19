@@ -19,6 +19,16 @@
                 <a href="{{ url_for('contact') }}" class="nav-item">Contact</a>
                 <a href="{{ url_for('carte') }}" class="nav-item">Ajouter une carte</a>
                 <a href="{{ url_for('carte_detail') }}" class="nav-item">Carte(s)</a> 
+                <div class="auth-links">
+                    {% if current_user.is_authenticated %}
+                        <span class="welcome">Bienvenue, {{ current_user.name }}</span>
+                        <a href="{{ url_for('logout') }}" class="btn btn-logout">Se déconnecter</a>
+                    {% else %}
+                        <a href="{{ url_for('login') }}" class="btn btn-login">Se connecter</a>
+                        <a href="{{ url_for('register') }}" class="btn btn-register">S'inscrire</a>
+                    {% endif %}
+                </div>
+                
             </div>
         </nav>
     </header>
